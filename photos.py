@@ -66,8 +66,8 @@ def meta_move(indir,outdir):
                 except KeyError as anothererr:
                     print outdir, str(anothererr)
                     os.renames(f,os.path.join(outdir,'nodate',f))
-                    
-                
+
+
 # Begin crude error handling...
     except IOError as ioerr:
         print('File error: ' + str(ioerr))
@@ -76,15 +76,16 @@ def meta_move(indir,outdir):
 #        print('OS error: ' + str(oserr))
 
 
-#main starts here-ish
-rootdir = os.getcwd()
-for dirpath, dirnames, filenames in os.walk(rootdir, topdown=False):
-#    indir = os.getcwd() #raw_input('Source Directory (full path): ')
-    indir = dirpath
-    print 'PROCESSING ', indir
-    outdir = '/mnt/MediaStorage/SubaquaticPhotos'
-    print 'Placing processed files in ', outdir
-    meta_move(indir, outdir)
+def main():
+    rootdir = os.getcwd()
+    for dirpath, dirnames, filenames in os.walk(rootdir, topdown=False):
+    #    indir = os.getcwd() #raw_input('Source Directory (full path): ')
+        indir = dirpath
+        print 'PROCESSING ', indir
+        outdir = '/mnt/MediaStorage/SubaquaticPhotos'
+        print 'Placing processed files in ', outdir
+        meta_move(indir, outdir)
 
 
-
+if __name__ == "__main__":
+    main()
