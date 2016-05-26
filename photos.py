@@ -1,3 +1,4 @@
+import argparse
 import pyexiv2
 import os
 import sys
@@ -77,14 +78,27 @@ def meta_move(indir,outdir):
 
 
 def main():
-    rootdir = os.getcwd()
-    for dirpath, dirnames, filenames in os.walk(rootdir, topdown=False):
-    #    indir = os.getcwd() #raw_input('Source Directory (full path): ')
+    parser = argparse.ArgumentParser(
+            description="Utility for moving pictures into directories based on EXIF data.",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+            "-s",
+            "--source_path",
+            default=os.getcwd(),
+            help="Path to input directory")
+    parser.add_argument(
+            "-t",
+            "--target_path",
+            default='/mnt/MediaStorage/SubaquaticPhotos',
+            help="Path to output directory")
+    args = parser.parse_args()
+
+    print 'Placing processed files in: {}'.format(args.target_path)
+
+    for dirpath, dirnames, filenames in os.walk(args.source_path, topdown=False):
         indir = dirpath
         print 'PROCESSING ', indir
-        outdir = '/mnt/MediaStorage/SubaquaticPhotos'
-        print 'Placing processed files in ', outdir
-        meta_move(indir, outdir)
+        meta_move(indir, args.target_path)
 
 
 if __name__ == "__main__":
