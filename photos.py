@@ -1,8 +1,10 @@
+import argparse
+import logging
 import pyexiv2
 import os
-import sys
-# not sure I actually need sys...
-# Extraineous 'print' lines are rudimentary de-bugging... they give me warm-fuzzies.
+
+# Get a local logger for writing log messages instead of using extraineous 'print' lines
+logger = logging.getLogger(__name__)
 
 
 # Added this to start to deal with videos.
@@ -15,7 +17,7 @@ def video_move(indir,outdir):
         suffix = os.path.splitext(f.lower())[1]
         if suffix in videotypes:
             os.renames(f,os.path.join(outdir,f))
-            print 'IM A VIDEO'
+            logger.info('IM A VIDEO')
 
 
 # read EXIF data for date of photo creation then rename the file with
@@ -39,52 +41,70 @@ def meta_move(indir,outdir):
 # Check for file existance here, then move.
                     if os.path.isfile(os.path.join(outdir,yeardir,monthdir,newname)):
                         os.remove(f)
-                        print f, ' has already been placed in the library.'
+                        logger.warn('{} has already been placed in the library.'.format(f))
                     else:
-                        print 'Moving ', f, 'to ', os.path.join(outdir,yeardir,monthdir,newname)
+                        logger.info('Moving {} to {}'.format(f, os.path.join(outdir,yeardir,monthdir,newname)))
                         os.renames(f,os.path.join(outdir,yeardir,monthdir,newname))
                 else:
                     video_move(indir,outdir)
 
             except KeyError as keyerr:
-                print outdir
-                print 'Key error: Exif.Photo.DateTimeOriginal' + str(keyerr) + ' for ' + f
-                print 'Trying to process ', f, ' with Exif.Image.DateTime'
+                logger.warn(outdir)
+                logger.warn('Key error: Exif.Photo.DateTimeOriginal' + str(keyerr) + ' for ' + f)
+                logger.warn('Trying to process {} with Exif.Image.DateTime'.format(f))
 # This next bit is a complete mess. Looks like I need to define another function
                 try:
                    dateTag = exifdata['Exif.Image.DateTime']
-                   newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + suffix        
+                   newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + suffix
                    newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + suffix
                    yeardir = dateTag.value.strftime('%Y')
                    monthdir = dateTag.value.strftime('%m')
                    if os.path.isfile(os.path.join(outdir,yeardir,monthdir,newname)):
                        os.remove(f)
-                       print f, ' has already been placed in the library.'
+                       logger.warn('{} has already been placed in the library.'.format(f))
                    else:
-                       print 'Moving ', f, 'to ', os.path.join(outdir,yeardir,monthdir,newname)
+                       logger.info('Moving {} to {}'.format(f, os.path.join(outdir,yeardir,monthdir,newname)))
                        os.renames(f,os.path.join(outdir,yeardir,monthdir,newname))
                 except KeyError as anothererr:
-                    print outdir, str(anothererr)
+                    logger.warn(outdir +" " + str(anothererr))
                     os.renames(f,os.path.join(outdir,'nodate',f))
-                    
-                
+
+
 # Begin crude error handling...
     except IOError as ioerr:
-        print('File error: ' + str(ioerr))
+        logger.warn('File error: ' + str(ioerr))
         pass
 #    except OSError as oserr:
-#        print('OS error: ' + str(oserr))
+#        logger.warn('OS error: ' + str(oserr))
 
 
-#main starts here-ish
-rootdir = os.getcwd()
-for dirpath, dirnames, filenames in os.walk(rootdir, topdown=False):
-#    indir = os.getcwd() #raw_input('Source Directory (full path): ')
-    indir = dirpath
-    print 'PROCESSING ', indir
-    outdir = '/mnt/MediaStorage/SubaquaticPhotos'
-    print 'Placing processed files in ', outdir
-    meta_move(indir, outdir)
+def main():
+    # Set up global logging at the WARNING level, but the local logger to the DEBUG level
+    logging.basicConfig(level=logging.WARNING)
+    logger.setLevel(logging.DEBUG)
+
+    parser = argparse.ArgumentParser(
+            description="Utility for moving pictures into directories based on EXIF data.",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+            "-s",
+            "--source_path",
+            default=os.getcwd(),
+            help="Path to input directory")
+    parser.add_argument(
+            "-t",
+            "--target_path",
+            default='/mnt/MediaStorage/SubaquaticPhotos',
+            help="Path to output directory")
+    args = parser.parse_args()
+
+    logger.info('Placing processed files in: {}'.format(args.target_path))
+
+    for dirpath, dirnames, filenames in os.walk(args.source_path, topdown=False):
+        indir = dirpath
+        logger.info('PROCESSING {}'.format(indir))
+        meta_move(indir, args.target_path)
 
 
-
+if __name__ == "__main__":
+    main()
