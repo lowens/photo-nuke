@@ -1,87 +1,122 @@
 import argparse
+import glob
+import hashlib
 import logging
 import pyexiv2
 import os
+import sets
 
 # Get a local logger for writing log messages instead of using extraineous 'print' lines
 logger = logging.getLogger(__name__)
 
+PHOTO_EXTENSIONS = sets.Set(['jpg', 'nef', 'tif', 'png', 'bmp'])
+VIDEO_EXTENSIONS = sets.Set(['mp4', 'mov', 'mts', 'avi', 'thm' ,'mpg', 'm4v'])
+EXTENSIONS = PHOTO_EXTENSIONS.union(VIDEO_EXTENSIONS)
 
 # Added this to start to deal with videos.
-def video_move(indir,outdir):
-    videotypes = '.mp4', '.mov', '.mts', '.avi', '.thm' ,'.mpg', '.m4v'
-    outdir = os.path.join(outdir,'Videos')
-    os.chdir(indir)
-    for f in os.listdir(os.curdir):
-#        f = os.path.join(dirpath,f)
-        suffix = os.path.splitext(f.lower())[1]
-        if suffix in videotypes:
-            os.renames(f,os.path.join(outdir,f))
-            logger.info('IM A VIDEO')
+def process_video_file(filename, target_path):
+    target_filename = os.path.join(target_path, 'Videos', os.path.basename(filename))
+    logger.info('Moving VIDEO file {} to {}'.format(filename, target_filename))
+    os.renames(filename, target_filename)
 
 
 # read EXIF data for date of photo creation then rename the file with
 # it's date/timeand move it to it's proper year/month directory
-def meta_move(indir,outdir):
-    phototypes = '.jpg', '.nef', '.tif', '.png', '.bmp'
+def process_photo_file(filename, target_path):
+    """
+    Read EXIF data for date of photo creation then rename the file with
+    it's date/time and move it to its proper year/month directory
+    """
     try:
-        os.chdir(indir)
-        for f in os.listdir(os.curdir):
-#            f = os.path.join(dirpath,f)
-            suffix = os.path.splitext(f.lower())[1]
-# if suffix is jpg, nef, tif, etc...
+        exifdata = pyexiv2.metadata.ImageMetadata(filename)
+        exifdata.read()
+
+        # Set a default target_filename in case no EXIF data is found
+        target_filename = os.path.join(target_path, 'nodate', os.path.basename(filename))
+        try:
+            dateTag = exifdata['Exif.Photo.DateTimeOriginal']
+            newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + os.path.splitext(filename)[-1]
+            yeardir = dateTag.value.strftime('%Y')
+            monthdir = dateTag.value.strftime('%m')
+            target_filename = os.path.join(target_path, yeardir, monthdir, newname)
+        except KeyError as keyerr:
             try:
-                if suffix in phototypes:
-                    exifdata = pyexiv2.metadata.ImageMetadata(f)
-                    exifdata.read()
-                    dateTag = exifdata['Exif.Photo.DateTimeOriginal']
-                    newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + suffix
-                    yeardir = dateTag.value.strftime('%Y')
-                    monthdir = dateTag.value.strftime('%m')
-# Check for file existance here, then move.
-                    if os.path.isfile(os.path.join(outdir,yeardir,monthdir,newname)):
-                        os.remove(f)
-                        logger.warn('{} has already been placed in the library.'.format(f))
-                    else:
-                        logger.info('Moving {} to {}'.format(f, os.path.join(outdir,yeardir,monthdir,newname)))
-                        os.renames(f,os.path.join(outdir,yeardir,monthdir,newname))
-                else:
-                    video_move(indir,outdir)
-
+                dateTag = exifdata['Exif.Image.DateTime']
+                newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + os.path.splitext(filename)[-1]
+                yeardir = dateTag.value.strftime('%Y')
+                monthdir = dateTag.value.strftime('%m')
+                target_filename = os.path.join(target_path, yeardir, monthdir, newname)
             except KeyError as keyerr:
-                logger.warn(outdir)
-                logger.warn('Key error: Exif.Photo.DateTimeOriginal' + str(keyerr) + ' for ' + f)
-                logger.warn('Trying to process {} with Exif.Image.DateTime'.format(f))
-# This next bit is a complete mess. Looks like I need to define another function
-                try:
-                   dateTag = exifdata['Exif.Image.DateTime']
-                   newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + suffix
-                   newname = dateTag.value.strftime('%Y%m%d_%H%M%S') + suffix
-                   yeardir = dateTag.value.strftime('%Y')
-                   monthdir = dateTag.value.strftime('%m')
-                   if os.path.isfile(os.path.join(outdir,yeardir,monthdir,newname)):
-                       os.remove(f)
-                       logger.warn('{} has already been placed in the library.'.format(f))
-                   else:
-                       logger.info('Moving {} to {}'.format(f, os.path.join(outdir,yeardir,monthdir,newname)))
-                       os.renames(f,os.path.join(outdir,yeardir,monthdir,newname))
-                except KeyError as anothererr:
-                    logger.warn(outdir +" " + str(anothererr))
-                    os.renames(f,os.path.join(outdir,'nodate',f))
+                logger.warn("No EXIF data found for {}".format(filename))
 
+        # Check for file existance here, then move.
+        if os.path.isfile(target_filename):
+            os.remove(filename)
+            logger.warn('{} has already been placed in the library.'.format(filename))
+        else:
+            logger.info('Moving {} to {}'.format(filename, target_filename))
+            os.renames(filename, target_filename)
 
-# Begin crude error handling...
+    # Begin crude error handling...
     except IOError as ioerr:
         logger.warn('File error: ' + str(ioerr))
-        pass
-#    except OSError as oserr:
-#        logger.warn('OS error: ' + str(oserr))
+    # except OSError as oserr:
+    #     logger.warn('OS error: ' + str(oserr))
+
+
+def process_file(filename, target_path):
+    if lowercase_file_extension(filename) in PHOTO_EXTENSIONS:
+        process_photo_file(filename, target_path)
+    elif lowercase_file_extension(filename) in VIDEO_EXTENSIONS:
+        process_video_file(filename, target_path)
+    else:
+        logger.warn("{} extension not in photo or video extension list")
+
+
+def lowercase_file_extension(path):
+    return path.split('.')[-1].lower()
+
+
+def get_file_hash(path):
+    sha1 = hashlib.sha1()
+    with open(path, 'rb') as f:
+        sha1.update(f.read())
+    return sha1.hexdigest()
+
+
+def get_hashed_file_list(path):
+    hashed_file_list = {}
+    for dirpath, dirnames, filenames in os.walk(path, topdown=False):
+        filenames = glob.glob(os.path.join(dirpath, "*"))
+        for filename in filenames:
+            if lowercase_file_extension(filename) in EXTENSIONS:
+                filehash = get_file_hash(filename)
+                logger.debug("Found {} with hash {}".format(filename, filehash))
+                if filehash in hashed_file_list:
+                    logger.warn("{} matches hash for {}, assuming it is a duplicate".format(filename, hashed_file_list[filehash]))
+                else:
+                    hashed_file_list[filehash] = filename
+            else:
+                logger.debug("Skipping {}".format(filename))
+    return hashed_file_list
+
+
+def backup_photos(source_path, target_path):
+    source_files = get_hashed_file_list(source_path)
+    target_files = get_hashed_file_list(target_path)
+
+    for filehash in source_files:
+        if filehash in target_files:
+            logger.warn("Source {} matches hash for target {}, assuming it is a duplicate".format(source_files[filehash], target_files[filehash]))
+        else:
+            logger.info("Processing source file: {}".format(source_files[filehash]))
+            process_file(source_files[filehash], target_path)
 
 
 def main():
     # Set up global logging at the WARNING level, but the local logger to the DEBUG level
     logging.basicConfig(level=logging.WARNING)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.WARNING)
 
     parser = argparse.ArgumentParser(
             description="Utility for moving pictures into directories based on EXIF data.",
@@ -96,14 +131,23 @@ def main():
             "--target_path",
             default='/mnt/MediaStorage/SubaquaticPhotos',
             help="Path to output directory")
+    parser.add_argument(
+            "-v",
+            "--verbose",
+            action='count',
+            default=0,
+            help="Increase logging verbosity, use multiple times if desired")
     args = parser.parse_args()
 
-    logger.info('Placing processed files in: {}'.format(args.target_path))
+    if args.verbose > 1:
+        logger.setlevel(logging.DEBUG)
+    elif args.verbose > 0:
+        logger.setLevel(logging.INFO)
 
-    for dirpath, dirnames, filenames in os.walk(args.source_path, topdown=False):
-        indir = dirpath
-        logger.info('PROCESSING {}'.format(indir))
-        meta_move(indir, args.target_path)
+    logger.info('Source path: {}'.format(args.source_path))
+    logger.info('Target path: {}'.format(args.target_path))
+
+    backup_photos(args.source_path, args.target_path)
 
 
 if __name__ == "__main__":
